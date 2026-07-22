@@ -1,45 +1,64 @@
-# [Project name]
+# Discord Auto-Poster Bot — Project Overview
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A Telegram→Discord auto-posting pipeline with a full management dashboard.
 
-## Run & Operate
+## Architecture
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+```
+Telegram channel
+      │  (Telethon listener)
+      ▼
+  bot/main.py          ← Python bot (background worker)
+      │  POST /api/logs
+      │  POST /api/bot/heartbeat
+      ▼
+artifacts/api-server   ← Express + Drizzle ORM (shared API)
+      │  reads/writes
+      ▼
+  PostgreSQL DB        ← bot_logs, bot_status, bot_config tables
+      ▲  GET /api/*
+      │
+artifacts/dashboard    ← React + Vite dashboard (/ preview path)
+```
 
-## Stack
+## How it works
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+1. The Python bot (`bot/main.py`) connects to Telegram via Telethon and watches `SOURCE_CHANNEL`
+2. When a new message arrives containing a shortlink (linkvertise, admaven, etc.), the bot:
+   - Calls **bypass.vip** to resolve the real URL
+   - Optionally wraps the result with an **AdMaven** content locker
+   - Downloads any attached media if it's under 8 MB (Discord webhook limit)
+   - Posts the final link + media to the configured Discord webhook
+   - Reports the action to `POST /api/logs` for dashboard tracking
+3. The bot also sends a **heartbeat** to `POST /api/bot/heartbeat` every 30 seconds
+4. The dashboard shows the bot as **ONLINE** if the last heartbeat was within 2 minutes
 
-## Where things live
+## Workflows
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+| Workflow | Purpose |
+|---|---|
+| `artifacts/api-server: API Server` | Express REST API — always running |
+| `artifacts/dashboard: web` | React dashboard at `/` |
+| `Bot: Discord Auto-Poster` | Python bot — start manually after adding secrets |
 
-## Architecture decisions
+## Required secrets (add in the Secrets panel)
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+| Secret | Description |
+|---|---|
+| `TELEGRAM_API_ID` | From my.telegram.org |
+| `TELEGRAM_API_HASH` | From my.telegram.org |
+| `TELEGRAM_SESSION` | Telethon StringSession |
+| `DISCORD_WEBHOOK_URL` | Target Discord channel webhook |
+| `BYPASS_API_KEY` | bypass.vip API key |
+| `ADMAVEN_API_KEY` | AdMaven API key (optional) |
 
-## Product
+## Starting the bot
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+1. Add the six secrets above in the Secrets panel (⚙️ → Secrets)
+2. Start the **Bot: Discord Auto-Poster** workflow from the Workflows panel
+3. The dashboard status indicator will flip to **SYS_ONLINE** within 30 seconds
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
-
-## Gotchas
-
-_Populate as you build — sharp edges, "always run X before Y" rules._
-
-## Pointers
-
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- Dark-mode-first dashboard with dense/cockpit aesthetic
+- Bot reports every link action (success/failed/skipped) to the dashboard API
