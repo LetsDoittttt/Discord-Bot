@@ -9,7 +9,8 @@ Listens to a Telegram channel, bypasses shortlinks, and posts clean links + medi
 | `TELEGRAM_API_ID` | Telegram API ID (from my.telegram.org) |
 | `TELEGRAM_API_HASH` | Telegram API Hash |
 | `TELEGRAM_SESSION` | Telethon session string |
-| `DISCORD_WEBHOOK_URL` | Discord channel webhook URL |
+| `DISCORD_BOT_TOKEN` | Discord bot token (from Discord Developer Portal) |
+| `DISCORD_CHANNEL_ID` | Target Discord channel ID |
 | `BYPASS_API_KEY` | bypass.vip API key |
 | `ADMAVEN_API_KEY` | AdMaven API key (optional — disable via dashboard) |
 
@@ -18,6 +19,7 @@ Listens to a Telegram channel, bypasses shortlinks, and posts clean links + medi
 | Variable | Default | Description |
 |---|---|---|
 | `SOURCE_CHANNEL` | `-1001758598979` | Telegram channel ID to monitor |
+| `DISCORD_CHANNEL_ID` | `1513592918101987460` | Discord channel to post into |
 | `BYPASS_API_URL` | `https://api.bypass.vip/bypass` | Bypass API endpoint |
 | `API_BASE_URL` | `http://localhost:80/api` | Dashboard API base URL |
 

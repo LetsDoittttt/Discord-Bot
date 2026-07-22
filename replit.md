@@ -48,7 +48,8 @@ artifacts/dashboard    ← React + Vite dashboard (/ preview path)
 | `TELEGRAM_API_ID` | From my.telegram.org |
 | `TELEGRAM_API_HASH` | From my.telegram.org |
 | `TELEGRAM_SESSION` | Telethon StringSession |
-| `DISCORD_WEBHOOK_URL` | Target Discord channel webhook |
+| `DISCORD_BOT_TOKEN` | Discord bot token (Discord Developer Portal) |
+| `DISCORD_CHANNEL_ID` | Target Discord channel ID |
 | `BYPASS_API_KEY` | bypass.vip API key |
 | `ADMAVEN_API_KEY` | AdMaven API key (optional) |
 

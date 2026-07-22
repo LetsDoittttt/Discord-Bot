@@ -10,7 +10,7 @@ import re
 import os
 import logging
 import aiohttp
-import aiofiles
+import discord
 from datetime import datetime, timezone
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
@@ -23,13 +23,16 @@ TELEGRAM_API_ID       = int(os.environ.get("TELEGRAM_API_ID", "0"))
 TELEGRAM_API_HASH     = os.environ.get("TELEGRAM_API_HASH", "")
 TELEGRAM_SESSION      = os.environ.get("TELEGRAM_SESSION", "")
 
+DISCORD_BOT_TOKEN     = os.environ.get("DISCORD_BOT_TOKEN", "")
+DISCORD_CHANNEL_ID    = int(os.environ.get("DISCORD_CHANNEL_ID", "1513592918101987460"))
+
 SOURCE_CHANNEL        = int(os.environ.get("SOURCE_CHANNEL", "-1001758598979"))
-DISCORD_WEBHOOK_URL   = os.environ.get("DISCORD_WEBHOOK_URL", "")
+
 BYPASS_API_URL        = os.environ.get("BYPASS_API_URL", "https://api.bypass.vip/bypass")
 BYPASS_API_KEY        = os.environ.get("BYPASS_API_KEY", "")
 ADMAVEN_API_KEY       = os.environ.get("ADMAVEN_API_KEY", "")
 
-# Internal dashboard API URL (same container, goes through shared proxy)
+# Internal dashboard API URL
 API_BASE_URL          = os.environ.get("API_BASE_URL", "http://localhost:80/api")
 
 # ── LINK DETECTION ─────────────────────────────────────────────────────────────
@@ -51,15 +54,12 @@ def extract_link(text: str):
     return None
 
 # ── BYPASS ─────────────────────────────────────────────────────────────────────
-async def bypass_link(session: aiohttp.ClientSession, url: str) -> str | None:
+async def bypass_link(session: aiohttp.ClientSession, url: str):
     try:
         params = {"url": url}
-        headers = {}
-        if BYPASS_API_KEY:
-            headers["x-api-key"] = BYPASS_API_KEY
+        headers = {"x-api-key": BYPASS_API_KEY} if BYPASS_API_KEY else {}
         async with session.get(BYPASS_API_URL, params=params, headers=headers, timeout=aiohttp.ClientTimeout(total=20)) as resp:
             if resp.status != 200:
-                log.warning("Bypass API %s for %s", resp.status, url)
                 return None
             data = await resp.json()
             return data.get("result") or data.get("url") or data.get("bypassed")
@@ -67,8 +67,8 @@ async def bypass_link(session: aiohttp.ClientSession, url: str) -> str | None:
         log.error("Bypass error: %s", e)
         return None
 
-# ── ADMAVEN WRAP ───────────────────────────────────────────────────────────────
-async def admaven_wrap(session: aiohttp.ClientSession, url: str) -> str | None:
+# ── ADMAVEN ────────────────────────────────────────────────────────────────────
+async def admaven_wrap(session: aiohttp.ClientSession, url: str):
     if not ADMAVEN_API_KEY:
         return None
     try:
@@ -91,33 +91,9 @@ async def admaven_wrap(session: aiohttp.ClientSession, url: str) -> str | None:
         log.error("AdMaven error: %s", e)
         return None
 
-# ── POST TO DISCORD ────────────────────────────────────────────────────────────
-async def post_to_discord(session: aiohttp.ClientSession, content: str, file_path: str | None = None):
-    if not DISCORD_WEBHOOK_URL:
-        log.warning("No Discord webhook URL set")
-        return
-
-    try:
-        if file_path and os.path.exists(file_path):
-            async with aiofiles.open(file_path, "rb") as f:
-                file_data = await f.read()
-            filename = os.path.basename(file_path)
-            form = aiohttp.FormData()
-            form.add_field("content", content)
-            form.add_field("file", file_data, filename=filename, content_type="video/mp4")
-            async with session.post(DISCORD_WEBHOOK_URL, data=form) as resp:
-                if resp.status in (200, 204):
-                    log.info("Posted to Discord with media")
-                else:
-                    log.warning("Discord webhook returned %s", resp.status)
-        else:
-            async with session.post(DISCORD_WEBHOOK_URL, json={"content": content}) as resp:
-                if resp.status in (200, 204):
-                    log.info("Posted to Discord (link only)")
-                else:
-                    log.warning("Discord webhook returned %s", resp.status)
-    except Exception as e:
-        log.error("Discord post error: %s", e)
+# ── DISCORD CLIENT ─────────────────────────────────────────────────────────────
+intents = discord.Intents.default()
+discord_client = discord.Client(intents=intents)
 
 # ── REPORT TO DASHBOARD ────────────────────────────────────────────────────────
 async def report_log(
@@ -172,7 +148,7 @@ async def heartbeat_loop(session: aiohttp.ClientSession, started_at: str):
         await asyncio.sleep(30)
 
 # ── PROCESS MESSAGE ────────────────────────────────────────────────────────────
-async def process_message(client: TelegramClient, http: aiohttp.ClientSession, message):
+async def process_message(tg_client: TelegramClient, http: aiohttp.ClientSession, message):
     text = message.text or message.caption or ""
     url = extract_link(text)
     if not url:
@@ -189,30 +165,45 @@ async def process_message(client: TelegramClient, http: aiohttp.ClientSession, m
 
     # AdMaven wrap
     final_url = await admaven_wrap(http, clean_url) or clean_url
-
     log.info("Final URL: %s", final_url)
 
-    # Download media if present
+    # Get Discord channel
+    channel = discord_client.get_channel(DISCORD_CHANNEL_ID)
+    if not channel:
+        log.error("Discord channel not found: %s", DISCORD_CHANNEL_ID)
+        await report_log(http, url, "failed", bypassed_url=clean_url, final_url=final_url,
+                         message="Discord channel not found", level="error")
+        return
+
+    # Download and post media
     file_path = None
     had_media = False
     if message.media:
         try:
             doc = getattr(message.media, "document", None)
             file_size = getattr(doc, "size", 0) if doc else 0
-            if file_size < 8 * 1024 * 1024:  # Discord 8MB limit for webhooks
+            if file_size < 25 * 1024 * 1024:  # 25 MB Discord bot limit
                 file_path = f"/tmp/media_{message.id}.mp4"
-                await client.download_media(message, file=file_path)
+                await tg_client.download_media(message, file=file_path)
                 had_media = True
-                log.info("Downloaded media to %s", file_path)
+                log.info("Downloaded media")
+                await channel.send(content=final_url, file=discord.File(file_path))
+                log.info("Posted to Discord with media")
             else:
-                log.warning("File too large for Discord (%s bytes)", file_size)
+                log.warning("File too large (%s bytes), sending link only", file_size)
+                await channel.send(content=final_url)
         except Exception as e:
-            log.error("Media download error: %s", e)
+            log.error("Media error: %s", e)
+            await channel.send(content=final_url)
+    else:
+        await channel.send(content=final_url)
+        log.info("Posted link to Discord")
 
-    # Post to Discord
-    await post_to_discord(http, final_url, file_path)
+    # Cleanup
+    if file_path and os.path.exists(file_path):
+        os.remove(file_path)
 
-    # Report to dashboard
+    # Report success to dashboard
     await report_log(
         http,
         original_url=url,
@@ -222,31 +213,36 @@ async def process_message(client: TelegramClient, http: aiohttp.ClientSession, m
         had_media=had_media,
     )
 
-    # Cleanup
-    if file_path and os.path.exists(file_path):
-        os.remove(file_path)
-
 # ── MAIN ───────────────────────────────────────────────────────────────────────
 async def main():
     if not TELEGRAM_API_ID or not TELEGRAM_API_HASH:
         raise RuntimeError("TELEGRAM_API_ID and TELEGRAM_API_HASH must be set")
+    if not DISCORD_BOT_TOKEN:
+        raise RuntimeError("DISCORD_BOT_TOKEN must be set")
 
     started_at = datetime.now(timezone.utc).isoformat()
 
-    client = TelegramClient(StringSession(TELEGRAM_SESSION), TELEGRAM_API_ID, TELEGRAM_API_HASH)
-    await client.connect()
+    tg_client = TelegramClient(StringSession(TELEGRAM_SESSION), TELEGRAM_API_ID, TELEGRAM_API_HASH)
+    await tg_client.connect()
     log.info("Telegram connected!")
 
     async with aiohttp.ClientSession() as http:
         # Start heartbeat loop
         asyncio.create_task(heartbeat_loop(http, started_at))
 
-        @client.on(events.NewMessage(chats=[SOURCE_CHANNEL]))
+        @tg_client.on(events.NewMessage(chats=[SOURCE_CHANNEL]))
         async def on_new_message(event):
-            await process_message(client, http, event.message)
+            await process_message(tg_client, http, event.message)
 
-        log.info("Listening on channel %s", SOURCE_CHANNEL)
-        await client.run_until_disconnected()
+        log.info("Listening on Telegram channel %s", SOURCE_CHANNEL)
+
+        # Start Discord bot in background
+        await discord_client.login(DISCORD_BOT_TOKEN)
+        asyncio.create_task(discord_client.connect())
+        await asyncio.sleep(3)  # wait for Discord to connect
+        log.info("Discord connected!")
+
+        await tg_client.run_until_disconnected()
 
 if __name__ == "__main__":
     asyncio.run(main())
