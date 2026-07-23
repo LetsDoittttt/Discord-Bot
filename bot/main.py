@@ -44,6 +44,7 @@ LINK_PATTERNS = [
     re.compile(r"https?://link-target\.net/\S+", re.IGNORECASE),
     re.compile(r"https?://link-center\.net/\S+", re.IGNORECASE),
     re.compile(r"https?://admaven\.com/\S+", re.IGNORECASE),
+    re.compile(r"https?://speedy-links\.com/\S+", re.IGNORECASE),
 ]
 
 def extract_link(text: str):
