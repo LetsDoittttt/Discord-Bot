@@ -150,7 +150,7 @@ async def heartbeat_loop(session: aiohttp.ClientSession, started_at: str):
 
 # ── PROCESS MESSAGE ────────────────────────────────────────────────────────────
 async def process_message(tg_client: TelegramClient, http: aiohttp.ClientSession, message):
-    text = message.text or message.caption or ""
+    text = message.text or ""
     log.info("Message text: %s", text[:100] if text else "EMPTY")
     url = extract_link(text)
     log.info("Extracted URL: %s", url)
