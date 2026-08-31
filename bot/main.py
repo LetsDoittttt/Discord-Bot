@@ -185,22 +185,22 @@ async def process_message(tg_client: TelegramClient, http: aiohttp.ClientSession
         try:
             doc = getattr(message.media, "document", None)
             file_size = getattr(doc, "size", 0) if doc else 0
-            if file_size < 25 * 1024 * 1024:  # 25 MB Discord bot limit
+            if file_size < 25 * 1024 * 1024:
                 file_path = f"/tmp/media_{message.id}.mp4"
                 await tg_client.download_media(message, file=file_path)
                 had_media = True
                 log.info("Downloaded media")
                 await asyncio.sleep(2)
-    await channel.send(content=final_url, file=discord.File(file_path))
+                await channel.send(content=final_url, file=discord.File(file_path))
                 log.info("Posted to Discord with media")
             else:
                 log.warning("File too large (%s bytes), sending link only", file_size)
                 await asyncio.sleep(2)
-        await channel.send(content=final_url)
+                await channel.send(content=final_url)
         except Exception as e:
             log.error("Media error: %s", e)
             await asyncio.sleep(2)
-        await channel.send(content=final_url)
+            await channel.send(content=final_url)
     else:
         await asyncio.sleep(2)
         await channel.send(content=final_url)
