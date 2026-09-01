@@ -65,7 +65,7 @@ async def bypass_link(session: aiohttp.ClientSession, url: str):
             data = await resp.json()
             return data.get("result") or data.get("url") or data.get("bypassed")
     except Exception as e:
-        log.error("Bypass error: %s", e)
+        log.error("Bypass error: %s", str(e) or type(e).__name__)
         return None
 
 # ── ADMAVEN ────────────────────────────────────────────────────────────────────
@@ -239,7 +239,8 @@ async def main():
 
         @tg_client.on(events.NewMessage(chats=[SOURCE_CHANNEL]))
         async def on_new_message(event):
-            await process_message(tg_client, http, event.message)
+            await asyncio.sleep(2)
+    await process_message(tg_client, http, event.message)
 
         log.info("Listening on Telegram channel %s", SOURCE_CHANNEL)
 
