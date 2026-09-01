@@ -240,7 +240,7 @@ async def main():
         @tg_client.on(events.NewMessage(chats=[SOURCE_CHANNEL]))
         async def on_new_message(event):
             await asyncio.sleep(2)
-    await process_message(tg_client, http, event.message)
+            await process_message(tg_client, http, event.message)
 
         log.info("Listening on Telegram channel %s", SOURCE_CHANNEL)
 
