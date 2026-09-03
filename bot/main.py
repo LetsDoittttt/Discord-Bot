@@ -238,9 +238,26 @@ async def main():
         asyncio.create_task(heartbeat_loop(http, started_at))
 
         @tg_client.on(events.NewMessage(chats=[SOURCE_CHANNEL]))
+        msg_queue = []
+        queue_running = False
+
+        async def run_queue():
+            nonlocal queue_running
+            if queue_running or not msg_queue:
+                return
+            queue_running = True
+            while msg_queue:
+                msg = msg_queue.pop(0)
+                try:
+                    await process_message(tg_client, http, msg)
+                except Exception as e:
+                    log.error("Queue error: %s", e)
+                await asyncio.sleep(3)
+            queue_running = False
+
         async def on_new_message(event):
-            await asyncio.sleep(2)
-            await process_message(tg_client, http, event.message)
+            msg_queue.append(event.message)
+            asyncio.create_task(run_queue())
 
         log.info("Listening on Telegram channel %s", SOURCE_CHANNEL)
 
