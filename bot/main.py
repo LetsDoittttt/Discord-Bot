@@ -237,7 +237,6 @@ async def main():
         # Start heartbeat loop
         asyncio.create_task(heartbeat_loop(http, started_at))
 
-        @tg_client.on(events.NewMessage(chats=[SOURCE_CHANNEL]))
         msg_queue = []
         queue_running = False
 
