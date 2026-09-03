@@ -255,6 +255,7 @@ async def main():
                 await asyncio.sleep(3)
             queue_running = False
 
+        @tg_client.on(events.NewMessage(chats=[SOURCE_CHANNEL]))
         async def on_new_message(event):
             msg_queue.append(event.message)
             asyncio.create_task(run_queue())
